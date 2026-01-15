@@ -3806,6 +3806,11 @@ function PlayPageClient() {
         });
         danmakuPluginRef.current.load();
 
+        // 触发自定义事件通知热力图更新
+        if (artPlayerRef.current) {
+          artPlayerRef.current.emit('danmaku:loaded');
+        }
+
         // 根据保存的显示状态来决定显示或隐藏弹幕
         const savedDisplayState = loadDanmakuDisplayState();
         if (savedDisplayState === false) {
@@ -4043,6 +4048,11 @@ function PlayPageClient() {
           synchronousPlayback: currentSettings.synchronousPlayback,
         });
         danmakuPluginRef.current.load();
+
+        // 触发自定义事件通知热力图更新
+        if (artPlayerRef.current) {
+          artPlayerRef.current.emit('danmaku:loaded');
+        }
 
         // 根据保存的显示状态来决定显示或隐藏弹幕
         const savedDisplayState = loadDanmakuDisplayState();
@@ -5850,6 +5860,14 @@ function PlayPageClient() {
             const adjustHeatmapPosition = () => {
               const progressBar = document.querySelector('.art-control-progress') as HTMLElement;
 
+              if (!progressBar) {
+                return;
+              }
+
+              if (!$el.parentElement) {
+                return;
+              }
+
               if (progressBar && $el.parentElement) {
                 const rect = progressBar.getBoundingClientRect();
                 const parentRect = $el.parentElement.getBoundingClientRect();
@@ -5949,10 +5967,26 @@ function PlayPageClient() {
 
             // 绘制热力图
             const drawHeatmap = () => {
-              if (!artPlayerRef.current || heatmapData.length === 0) return;
+              // 检查热力图是否启用（与初始状态逻辑保持一致）
+              const storedValue = localStorage.getItem('danmaku_heatmap_enabled');
+              const enabled = storedValue !== null ? storedValue === 'true' : true; // 默认开启
+              if (!enabled) {
+                // 热力图已关闭，跳过绘制
+                return;
+              }
+
+              if (!artPlayerRef.current) {
+                return;
+              }
+
+              if (heatmapData.length === 0) {
+                return;
+              }
 
               const ctx = canvas.getContext('2d');
-              if (!ctx) return;
+              if (!ctx) {
+                return;
+              }
 
               const dpr = window.devicePixelRatio || 1;
               const width = canvas.width / dpr;
@@ -6125,7 +6159,14 @@ function PlayPageClient() {
 
             // 监听弹幕数据更新
             const updateHeatmapData = () => {
-              if (!artPlayerRef.current || !danmakuPluginRef.current) return;
+              if (!artPlayerRef.current) {
+                return;
+              }
+
+              if (!danmakuPluginRef.current) {
+                return;
+              }
+
               const duration = artPlayerRef.current.duration || 0;
 
               // 直接从弹幕插件获取弹幕数据
@@ -6142,6 +6183,11 @@ function PlayPageClient() {
 
             artPlayerRef.current.on('video:loadedmetadata', updateHeatmapData);
 
+            // 监听弹幕加载完成事件
+            artPlayerRef.current.on('danmaku:loaded', () => {
+              updateHeatmapData();
+            });
+
             // 监听弹幕插件的配置变化
             if (danmakuPluginRef.current) {
               const originalConfig = danmakuPluginRef.current.config;
@@ -6152,10 +6198,27 @@ function PlayPageClient() {
               };
             }
 
-            // 初始尝试加载
-            setTimeout(updateHeatmapData, 500);
-            setTimeout(updateHeatmapData, 1500);
-            setTimeout(updateHeatmapData, 3000);
+            // 使用轮询机制等待弹幕插件准备好（替代固定延迟）
+            let pollAttempts = 0;
+            const maxPollAttempts = 60; // 最多尝试 60 次（30 秒）
+            const pollInterval = 500; // 每 500ms 检查一次
+
+            const pollForDanmakuPlugin = () => {
+              if (danmakuPluginRef.current && danmakuPluginRef.current.option?.danmuku) {
+                // 弹幕插件已准备好且有数据
+                updateHeatmapData();
+                return; // 成功，停止轮询
+              }
+
+              pollAttempts++;
+              if (pollAttempts < maxPollAttempts) {
+                // 继续轮询
+                setTimeout(pollForDanmakuPlugin, pollInterval);
+              }
+            };
+
+            // 开始轮询
+            setTimeout(pollForDanmakuPlugin, 500);
 
             // 清理
             return () => {
