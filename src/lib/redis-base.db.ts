@@ -4,6 +4,7 @@ import { createClient, RedisClientType } from 'redis';
 
 import { AdminConfig } from './admin.types';
 import { Favorite, IStorage, PlayRecord, SkipConfig } from './types';
+import { userInfoCache } from './user-cache';
 
 // 搜索历史最大条数
 const SEARCH_HISTORY_LIMIT = 20;
@@ -660,6 +661,8 @@ export abstract class BaseRedisStorage implements IStorage {
     favorite_migrated?: boolean;
     skip_migrated?: boolean;
     last_movie_request_time?: number;
+    email?: string;
+    emailNotifications?: boolean;
   } | null> {
     const userInfo = await this.withRetry(() =>
       this.client.hGetAll(this.userInfoKey(userName))
@@ -680,6 +683,8 @@ export abstract class BaseRedisStorage implements IStorage {
       favorite_migrated: userInfo.favorite_migrated === 'true',
       skip_migrated: userInfo.skip_migrated === 'true',
       last_movie_request_time: userInfo.last_movie_request_time ? parseInt(userInfo.last_movie_request_time, 10) : undefined,
+      email: userInfo.email,
+      emailNotifications: userInfo.emailNotifications === 'true',
     };
   }
 
@@ -1289,5 +1294,32 @@ export abstract class BaseRedisStorage implements IStorage {
 
   async removeUserMovieRequest(userName: string, requestId: string): Promise<void> {
     await this.withRetry(() => this.client.sRem(this.userMovieRequestsKey(userName), requestId));
+  }
+
+  // ---------- 用户邮箱相关 ----------
+  async getUserEmail(userName: string): Promise<string | null> {
+    const userInfo = await this.getUserInfoV2(userName);
+    return userInfo?.email || null;
+  }
+
+  async setUserEmail(userName: string, email: string): Promise<void> {
+    await this.withRetry(() =>
+      this.client.hSet(this.userInfoKey(userName), 'email', email)
+    );
+    // 清除缓存
+    userInfoCache?.delete(userName);
+  }
+
+  async getEmailNotificationPreference(userName: string): Promise<boolean> {
+    const userInfo = await this.getUserInfoV2(userName);
+    return userInfo?.emailNotifications || false;
+  }
+
+  async setEmailNotificationPreference(userName: string, enabled: boolean): Promise<void> {
+    await this.withRetry(() =>
+      this.client.hSet(this.userInfoKey(userName), 'emailNotifications', enabled.toString())
+    );
+    // 清除缓存
+    userInfoCache?.delete(userName);
   }
 }

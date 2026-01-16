@@ -590,6 +590,8 @@ export class UpstashRedisStorage implements IStorage {
     favorite_migrated?: boolean;
     skip_migrated?: boolean;
     last_movie_request_time?: number;
+    email?: string;
+    emailNotifications?: boolean;
   } | null> {
     // 先从缓存获取
     const cached = userInfoCache?.get(userName);
@@ -688,6 +690,8 @@ export class UpstashRedisStorage implements IStorage {
           ? userInfo.last_movie_request_time
           : parseInt(userInfo.last_movie_request_time as string, 10))
         : undefined,
+      email: userInfo.email as string | undefined,
+      emailNotifications: userInfo.emailNotifications === 'true' || userInfo.emailNotifications === true,
     };
 
     // 存入缓存
@@ -1334,6 +1338,33 @@ export class UpstashRedisStorage implements IStorage {
 
   async removeUserMovieRequest(userName: string, requestId: string): Promise<void> {
     await withRetry(() => this._client.srem(this.userMovieRequestsKey(userName), requestId));
+  }
+
+  // ---------- 用户邮箱相关 ----------
+  async getUserEmail(userName: string): Promise<string | null> {
+    const userInfo = await this.getUserInfoV2(userName);
+    return userInfo?.email || null;
+  }
+
+  async setUserEmail(userName: string, email: string): Promise<void> {
+    await withRetry(() =>
+      this._client.hset(this.userInfoKey(userName), { email })
+    );
+    // 清除缓存
+    userInfoCache?.delete(userName);
+  }
+
+  async getEmailNotificationPreference(userName: string): Promise<boolean> {
+    const userInfo = await this.getUserInfoV2(userName);
+    return userInfo?.emailNotifications || false;
+  }
+
+  async setEmailNotificationPreference(userName: string, enabled: boolean): Promise<void> {
+    await withRetry(() =>
+      this._client.hset(this.userInfoKey(userName), { emailNotifications: enabled.toString() })
+    );
+    // 清除缓存
+    userInfoCache?.delete(userName);
   }
 }
 

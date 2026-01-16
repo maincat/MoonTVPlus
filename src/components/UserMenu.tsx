@@ -15,6 +15,7 @@ import {
   Home,
   KeyRound,
   LogOut,
+  Mail,
   MoveDown,
   MoveUp,
   Rss,
@@ -55,6 +56,7 @@ export const UserMenu: React.FC = () => {
   const [isOfflineDownloadPanelOpen, setIsOfflineDownloadPanelOpen] = useState(false);
   const [isNotificationPanelOpen, setIsNotificationPanelOpen] = useState(false);
   const [isFavoritesPanelOpen, setIsFavoritesPanelOpen] = useState(false);
+  const [isEmailSettingsOpen, setIsEmailSettingsOpen] = useState(false);
   const [authInfo, setAuthInfo] = useState<AuthInfo | null>(null);
   const [storageType, setStorageType] = useState<string>('localstorage');
   const [mounted, setMounted] = useState(false);
@@ -68,7 +70,7 @@ export const UserMenu: React.FC = () => {
 
   // Body 滚动锁定 - 使用 overflow 方式避免布局问题
   useEffect(() => {
-    if (isSettingsOpen || isChangePasswordOpen || isSubscribeOpen || isOfflineDownloadPanelOpen) {
+    if (isSettingsOpen || isChangePasswordOpen || isSubscribeOpen || isOfflineDownloadPanelOpen || isEmailSettingsOpen) {
       const body = document.body;
       const html = document.documentElement;
 
@@ -87,7 +89,7 @@ export const UserMenu: React.FC = () => {
         html.style.overflow = originalHtmlOverflow;
       };
     }
-  }, [isSettingsOpen, isChangePasswordOpen, isSubscribeOpen, isOfflineDownloadPanelOpen]);
+  }, [isSettingsOpen, isChangePasswordOpen, isSubscribeOpen, isOfflineDownloadPanelOpen, isEmailSettingsOpen]);
 
   // 设置相关状态
   const [defaultAggregateSearch, setDefaultAggregateSearch] = useState(true);
@@ -107,6 +109,10 @@ export const UserMenu: React.FC = () => {
   const [nextEpisodePreCache, setNextEpisodePreCache] = useState(true);
   const [nextEpisodeDanmakuPreload, setNextEpisodeDanmakuPreload] = useState(true);
   const [searchTraditionalToSimplified, setSearchTraditionalToSimplified] = useState(false);
+
+  // 邮件通知设置
+  const [userEmail, setUserEmail] = useState('');
+  const [emailNotifications, setEmailNotifications] = useState(false);
 
   // 折叠面板状态
   const [isDoubanSectionOpen, setIsDoubanSectionOpen] = useState(true);
@@ -390,8 +396,66 @@ export const UserMenu: React.FC = () => {
       if (savedSearchTraditionalToSimplified !== null) {
         setSearchTraditionalToSimplified(savedSearchTraditionalToSimplified === 'true');
       }
+
+      // 加载邮件通知设置
+      loadEmailSettings();
     }
   }, []);
+
+  // 加载邮件通知设置
+  const loadEmailSettings = async () => {
+    try {
+      const response = await fetch('/api/user/email-settings');
+      if (response.ok) {
+        const data = await response.json();
+        setUserEmail(data.email || '');
+        setEmailNotifications(data.emailNotifications || false);
+      }
+    } catch (error) {
+      console.error('加载邮件设置失败:', error);
+    }
+  };
+
+  // 保存邮件通知设置
+  const handleSaveEmailSettings = async () => {
+    try {
+      const response = await fetch('/api/user/email-settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: userEmail,
+          emailNotifications,
+        }),
+      });
+
+      const messageEl = document.getElementById('email-settings-message');
+      if (response.ok) {
+        if (messageEl) {
+          messageEl.textContent = '保存成功！';
+          messageEl.className = 'text-xs text-center text-green-600 dark:text-green-400';
+          messageEl.classList.remove('hidden');
+          setTimeout(() => {
+            messageEl.classList.add('hidden');
+          }, 3000);
+        }
+      } else {
+        const data = await response.json();
+        if (messageEl) {
+          messageEl.textContent = data.error || '保存失败';
+          messageEl.className = 'text-xs text-center text-red-600 dark:text-red-400';
+          messageEl.classList.remove('hidden');
+        }
+      }
+    } catch (error) {
+      console.error('保存邮件设置失败:', error);
+      const messageEl = document.getElementById('email-settings-message');
+      if (messageEl) {
+        messageEl.textContent = '保存失败，请重试';
+        messageEl.className = 'text-xs text-center text-red-600 dark:text-red-400';
+        messageEl.classList.remove('hidden');
+      }
+    }
+  };
 
   // 点击外部区域关闭下拉框
   useEffect(() => {
@@ -847,9 +911,23 @@ export const UserMenu: React.FC = () => {
         <div className='px-3 py-2.5 border-b border-gray-200 dark:border-gray-700 bg-gradient-to-r from-gray-50 to-gray-100/50 dark:from-gray-800 dark:to-gray-800/50'>
           <div className='space-y-1'>
             <div className='flex items-center justify-between'>
-              <span className='text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider'>
-                当前用户
-              </span>
+              <div className='flex items-center gap-1.5'>
+                <span className='text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider'>
+                  当前用户
+                </span>
+                {/* 邮件设置图标按钮 */}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsOpen(false);
+                    setIsEmailSettingsOpen(true);
+                  }}
+                  className='p-0.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors'
+                  title='邮件通知设置'
+                >
+                  <Mail className='w-3 h-3 text-gray-500 dark:text-gray-400' />
+                </button>
+              </div>
               <span
                 className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium ${(authInfo?.role || 'user') === 'owner'
                   ? 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300'
@@ -2007,6 +2085,111 @@ export const UserMenu: React.FC = () => {
     </>
   );
 
+  // 邮件设置面板内容
+  const emailSettingsPanel = (
+    <>
+      {/* 背景遮罩 */}
+      <div
+        className='fixed inset-0 bg-black/50 backdrop-blur-sm z-[1000]'
+        onClick={() => setIsEmailSettingsOpen(false)}
+        onTouchMove={(e) => {
+          e.preventDefault();
+        }}
+        onWheel={(e) => {
+          e.preventDefault();
+        }}
+        style={{
+          touchAction: 'none',
+        }}
+      />
+
+      {/* 邮件设置面板 */}
+      <div
+        className='fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md bg-white dark:bg-gray-900 rounded-xl shadow-xl z-[1001] overflow-hidden'
+      >
+        <div
+          className='h-full p-6'
+          data-panel-content
+          onTouchMove={(e) => {
+            e.stopPropagation();
+          }}
+          style={{
+            touchAction: 'auto',
+          }}
+        >
+          {/* 标题栏 */}
+          <div className='flex items-center justify-between mb-6'>
+            <h3 className='text-xl font-bold text-gray-800 dark:text-gray-200'>
+              邮件通知设置
+            </h3>
+            <button
+              onClick={() => setIsEmailSettingsOpen(false)}
+              className='w-8 h-8 p-1 rounded-full flex items-center justify-center text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors'
+              aria-label='Close'
+            >
+              <X className='w-full h-full' />
+            </button>
+          </div>
+
+          {/* 表单 */}
+          <div className='space-y-4'>
+            <div>
+              <label className='block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2'>
+                邮箱地址
+              </label>
+              <input
+                type='email'
+                value={userEmail}
+                onChange={(e) => setUserEmail(e.target.value)}
+                placeholder='输入您的邮箱地址'
+                className='w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500'
+              />
+            </div>
+
+            <div className='flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg'>
+              <div>
+                <h4 className='text-sm font-medium text-gray-700 dark:text-gray-300'>
+                  接收收藏更新通知
+                </h4>
+                <p className='text-xs text-gray-500 dark:text-gray-400 mt-1'>
+                  当收藏的影片有更新时发送邮件通知
+                </p>
+              </div>
+              <button
+                onClick={() => setEmailNotifications(!emailNotifications)}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                  emailNotifications ? 'bg-blue-600' : 'bg-gray-200 dark:bg-gray-700'
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    emailNotifications ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
+
+            <button
+              onClick={handleSaveEmailSettings}
+              className='w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors'
+            >
+              保存设置
+            </button>
+
+            <p id='email-settings-message' className='text-xs text-center hidden'></p>
+          </div>
+
+          {/* 提示信息 */}
+          <div className='mt-6 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg'>
+            <p className='text-xs text-blue-800 dark:text-blue-200'>
+              💡 提示：需要管理员先在管理面板中配置邮件服务
+            </p>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+
   return (
     <>
       <div className='relative'>
@@ -2079,6 +2262,11 @@ export const UserMenu: React.FC = () => {
           />,
           document.body
         )}
+
+      {/* 使用 Portal 将邮件设置面板渲染到 document.body */}
+      {isEmailSettingsOpen &&
+        mounted &&
+        createPortal(emailSettingsPanel, document.body)}
     </>
   );
 };

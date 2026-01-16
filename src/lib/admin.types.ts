@@ -206,6 +206,24 @@ export interface AdminConfig {
     Password?: string; // 密码认证（备选）
     DisableVideoPreview?: boolean; // 禁用预览视频，直接返回直连链接
   };
+  EmailConfig?: {
+    enabled: boolean; // 是否启用邮件通知
+    provider: 'smtp' | 'resend'; // 邮件发送方式
+    // SMTP配置
+    smtp?: {
+      host: string; // SMTP服务器地址
+      port: number; // SMTP端口（25/465/587）
+      secure: boolean; // 是否使用SSL/TLS
+      user: string; // SMTP用户名
+      password: string; // SMTP密码
+      from: string; // 发件人邮箱
+    };
+    // Resend配置
+    resend?: {
+      apiKey: string; // Resend API Key
+      from: string; // 发件人邮箱
+    };
+  };
 }
 
 export interface AdminConfigResult {
